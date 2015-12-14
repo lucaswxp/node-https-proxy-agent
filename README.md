@@ -1,3 +1,45 @@
+This is a fork of the original https-proxy-agent library with the following additions:
+
+- You can set http headers to your agent/proxy
+- You will receive an event from the agent object when the response is ready
+
+I hacked the source so I could use the library to use with ProxyMesh's https integration:
+http://proxymesh.com/blog/pages/proxy-server-headers.html#https-connect-method
+
+It should work with other proxies too.
+
+See example using request library:
+
+```javascript
+var url = require('url'),
+    request = require('request'),
+    HttpsProxyAgent = require('https-proxy-agent');
+
+var u = url.parse('http://username:password@us-ca.proxymesh.com:31280');
+
+var proxy = new HttpsProxyAgent(u);
+
+var previousIp;
+proxy.on('response', function(resp){
+  previousIp = resp.headers['x-proxymesh-ip'];
+  //  get the proxy response
+  //  { statusCode: 200,
+  //  headers: { 'x-proxymesh-ip': '123.123.123' } }
+})
+
+// make request
+request({url: 'https://www.google.com', agent: proxy}, function(err, res){
+  console.log(res.headers)
+
+  // make another request with the same proxy mesh ip:
+  u.headers['X-ProxyMesh-IP'] = previousIp;
+  var proxy = new HttpsProxyAgent(u);
+  request({url: 'https://www.google.com', agent: proxy}, function(err, res){ // get the website response
+    ...
+  })
+})
+```
+
 https-proxy-agent
 ================
 ### An HTTP(s) proxy `http.Agent` implementation for HTTPS

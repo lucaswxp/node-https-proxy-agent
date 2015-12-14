@@ -60,7 +60,8 @@ inherits(HttpsProxyAgent, Agent);
 
 function connect (req, opts, fn) {
 
-  var proxy = this.proxy;
+  var proxy = this.proxy,
+      self = this;
 
   // create a socket connection to the proxy server
   var socket;
@@ -124,6 +125,31 @@ function connect (req, opts, fn) {
     var firstLine = str.substring(0, str.indexOf('\r\n'));
     var statusCode = +firstLine.split(' ')[1];
     debug('got proxy server response: %o', firstLine);
+    self.emit('raw_response', buffered);
+
+    var resp = {
+      statusCode: statusCode,
+      headers: {}
+    }
+
+    // simple http header parser
+    var lines = buffered.toString('ascii').split('\r\n');
+    for(var i in lines){
+      var line = lines[i];
+
+      if(i == 0){
+        continue; // first line is: HTTP/1.1 200 Connection established
+      }else{
+        var sep = line.indexOf(':');
+        if(sep !== -1){
+          var headerName = line.slice(0, sep),
+              headerVal  = line.slice(sep+1).trim();
+
+          resp.headers[headerName.toLowerCase()] = headerVal;
+        }
+      }
+    }
+    self.emit('response', resp);
 
     if (200 == statusCode) {
       // 200 Connected status code!
@@ -191,16 +217,20 @@ function connect (req, opts, fn) {
 
   var hostname = opts.host + ':' + opts.port;
   var msg = 'CONNECT ' + hostname + ' HTTP/1.1\r\n';
+  var auth = proxy.auth;
 
-  var headers = extend({}, proxy.headers);
-  if (proxy.auth) {
-    headers['Proxy-Authorization'] = 'Basic ' + new Buffer(proxy.auth).toString('base64');
+  // send extra headers to proxy
+  if(proxy.headers){
+    for(var headerName in proxy.headers){
+      msg += headerName + ': ' + proxy.headers[headerName] + '\r\n';
+    }
   }
-  headers['Host'] = hostname;
-  headers['Connection'] = 'close';
-  Object.keys(headers).forEach(function (name) {
-    msg += name + ': ' + headers[name] + '\r\n';
-  });
 
-  socket.write(msg + '\r\n');
+  if (auth) {
+    msg += 'Proxy-Authorization: Basic ' + new Buffer(auth).toString('base64') + '\r\n';
+  }
+  msg += 'Host: ' + hostname + '\r\n' +
+         'Connection: close\r\n' +
+         '\r\n';
+  socket.write(msg);
 };
